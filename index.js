@@ -34,7 +34,7 @@ const callHuggingFace = async (messages) => {
       model: VLM_CONFIG.MODEL,
       messages,
       max_tokens: VLM_CONFIG.MAX_TOKENS,
-      temperature: 0.1
+      temperature: 0
     }, {
       headers: { Authorization: `Bearer ${VLM_CONFIG.HF_TOKEN}` },
       timeout: 10000
