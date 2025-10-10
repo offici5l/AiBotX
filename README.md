@@ -1,6 +1,8 @@
 # AiBotX
 
-![AiBotX](AiBotX.png)
+<p align="center">
+  <img src="AiBotX.png" alt="AiBotX" width="200"/>
+</p>
 
 This project is currently under development.
 
