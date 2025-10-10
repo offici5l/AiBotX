@@ -49,7 +49,7 @@ const callHuggingFace = async (messages) => {
 
     return {
       violates: decision === 'YES',
-      reason: reason.substring(0, 200)
+      reason: reason
     };
   } catch (error) {
     return { violates: false, reason: 'Analysis unavailable' };
