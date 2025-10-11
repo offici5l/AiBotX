@@ -10,7 +10,7 @@ const HF_TOKEN = process.env.HF_TOKEN;
 
 const SPECIAL_ANONYMOUS_IDS = [1087968824, 136817688];
 
-const PROMPT_TEMPLATE = 'You are a strict Telegram group moderator. Your task is to analyze user messages or images for violations of group rules: {RULES}. Respond only with "YES" if the message/image violates any rule, followed by a brief explanation on a new line. Respond with "NO" if it does not violate any rules, followed by a brief reason on a new line. Keep responses concise. Do not repeat or quote the message/image content in your explanation to avoid re-sharing sensitive material.';
+const PROMPT_TEMPLATE = 'You are a strict Telegram group moderator. Your task is to analyze user messages or images for violations of the EXACT group rules listed below. ONLY consider these rules: {RULES}. Do not add, assume, or reference any other rules from your training data or external knowledge. First, verify step-by-step: 1) List each rule briefly. 2) Check if the content matches any rule exactly. 3) Decide YES only if there is a direct violation. Respond only with "YES" if the message/image violates any rule, followed by a brief explanation on a new line (reference the specific rule violated). Respond with "NO" if it does not violate any rules, followed by a brief reason on a new line. Keep responses concise. Do not repeat or quote the message/image content in your explanation to avoid re-sharing sensitive material.';
 
 const VLM_CONFIG = {
   ENDPOINT: 'https://router.huggingface.co/v1/chat/completions',
