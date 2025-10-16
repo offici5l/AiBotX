@@ -101,6 +101,112 @@ const isAuthorizedUser = async (ctx, chatId) => {
   }
 };
 
+const muteModule = (bot, redis) => {
+  const getAllowedMuters = async (chatId) => {
+    try {
+      const allowed = await redis.get(`group_allowed_muters:${chatId}`);
+      return allowed ? JSON.parse(allowed) : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const setAllowedMuters = async (chatId, allowed) => {
+    try {
+      await redis.set(`group_allowed_muters:${chatId}`, JSON.stringify(allowed));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const isAuthorizedToMute = async (ctx, chatId) => {
+    if (await isAuthorizedUser(ctx, chatId)) return true;
+    const userId = ctx.from.id;
+    const allowed = await getAllowedMuters(chatId);
+    return allowed.includes(userId);
+  };
+
+  const performMuteAction = async (ctx, chatId, userId, messageId, userDisplay) => {
+    try {
+      if (messageId) {
+        await bot.telegram.deleteMessage(chatId, messageId);
+      }
+      const untilDate = 0; // Permanent mute
+      await bot.telegram.restrictChatMember(chatId, userId, {
+        until_date: untilDate,
+        permissions: {
+          can_send_messages: false,
+          can_send_media_messages: false,
+          can_send_polls: false,
+          can_send_other_messages: false,
+          can_add_web_page_previews: false,
+          can_manage_topics: false
+        }
+      });
+      const userInfo = `${userDisplay} (ID: ${userId})`;
+      await ctx.reply(`✅ ${userInfo} muted permanently${messageId ? ' and message deleted' : ''}.\n\n(Admins can use /unmute ${userId} to unmute.)`);
+    } catch (error) {
+      const userInfo = `${userDisplay} (ID: ${userId})`;
+      await ctx.reply(`❌ Failed to mute ${userInfo}. Check bot permissions or if the user exists.`);
+    }
+  };
+
+  const handleMute = async (ctx) => {
+    if (ctx.chat.type !== 'supergroup') return ctx.reply('This command is for groups only.');
+    const chatId = ctx.chat.id;
+    const args = ctx.message.text.replace('/mute', '').trim().split(' ');
+    const subcommand = args[0]?.toLowerCase();
+
+    if (subcommand === 'add' || subcommand === 'remove') {
+      const authorized = await isAuthorizedUser(ctx, chatId);
+      if (!authorized) return ctx.reply('Only admins or authorized special users can add/remove muters.');
+      const userIdStr = args[1]?.trim();
+      if (!userIdStr || isNaN(parseInt(userIdStr))) return ctx.reply('Usage: /mute add <user_id> or /mute remove <user_id>');
+      const targetId = parseInt(userIdStr);
+      if (targetId === ctx.from.id) return ctx.reply('Cannot add/remove yourself.');
+      let allowed = await getAllowedMuters(chatId);
+      if (subcommand === 'add') {
+        if (allowed.includes(targetId)) return ctx.reply('User already allowed.');
+        allowed.push(targetId);
+      } else {
+        const index = allowed.indexOf(targetId);
+        if (index === -1) return ctx.reply('User not in allowed list.');
+        allowed.splice(index, 1);
+      }
+      const success = await setAllowedMuters(chatId, allowed);
+      if (success) {
+        const action = subcommand === 'add' ? 'added' : 'removed';
+        await ctx.reply(`✅ User ${targetId} ${action} to muters list.`);
+      } else {
+        await ctx.reply('❌ Failed to update list.');
+      }
+      return;
+    }
+
+    const replied = ctx.message.reply_to_message;
+    if (!replied) return ctx.reply('Please reply to a message with /mute to mute the user.\nOr use /mute add/remove for permissions.');
+    const authorized = await isAuthorizedToMute(ctx, chatId);
+    if (!authorized) return ctx.reply('You are not authorized to mute users. Admins can add you with /mute add <your_id>');
+    const { from: { id: userId, first_name, username }, message_id: messageId } = replied;
+    let isTargetAuthorized = SPECIAL_ANONYMOUS_IDS.includes(userId);
+    if (!isTargetAuthorized) {
+      try {
+        const member = await ctx.telegram.getChatMember(chatId, userId);
+        isTargetAuthorized = ['administrator', 'creator'].includes(member.status);
+      } catch (error) {
+        isTargetAuthorized = false;
+      }
+    }
+    if (isTargetAuthorized) return ctx.reply(`ℹ️ This user is an admin or authorized special user. Cannot mute.`);
+    const userDisplay = username ? `@${username}` : first_name || 'Unknown User';
+    await performMuteAction(ctx, chatId, userId, messageId, userDisplay);
+  };
+  return { handleMute };
+};
+
+const { handleMute } = muteModule(bot, redis);  // <-- هنا بعد التعريف
+
 const HELP_TEXT = `
 🤖 AI Moderator Bot (Beta)
 📎 Repo: github.com/offici5l/AiBotX
@@ -116,6 +222,15 @@ Example: /rules set No spam - No links - Tech only
 
 • /rules reset  
 Delete current rules.
+
+• /mute  
+↪️ Reply to a message to mute the user and delete it (authorized users only).
+
+• /mute add <user_id>  
+Add a user to muters list (admins only).
+
+• /mute remove <user_id>  
+Remove a user from muters list (admins only).
 
 • /report  
 ↪️ Reply to any violating message or image with /report.
@@ -266,7 +381,8 @@ bot.command('report', async (ctx) => {
           can_send_media_messages: false,
           can_send_polls: false,
           can_send_other_messages: false,
-          can_add_web_page_previews: false
+          can_add_web_page_previews: false,
+          can_manage_topics: false  // <-- أضفت ده للتوافق
         }
       });
       await ctx.reply(`User ${userInfo} muted permanently: ${reason}\n\n(Admins can use /unmute ${userId} to unmute.)`);
@@ -275,6 +391,8 @@ bot.command('report', async (ctx) => {
     }
   }
 });
+
+bot.command('mute', handleMute);
 
 export default async (req, res) => {
   if (req.query.set_webhook) {
