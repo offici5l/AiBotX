@@ -202,7 +202,7 @@ bot.command('report', async (ctx) => {
   if (ctx.chat.type !== 'supergroup') return ctx.reply('This command is for groups only.');
   const replied = ctx.message.reply_to_message;
   if (!replied) return ctx.reply('Please reply to a message with /report to analyze it for rule violations.');
-  const { from: { id: userId, first_name, username }, message_id: messageId, text, caption, photo, date: messageDate } = replied;
+  const { from: { id: userId, first_name, username }, message_id: messageId, text, caption, photo, reply_markup, date: messageDate } = replied;
   const chatId = ctx.chat.id;
   const messageText = text || caption || '';
   if (!messageText && !photo) return ctx.reply('The replied message has no text or photo to analyze.');
@@ -218,6 +218,24 @@ bot.command('report', async (ctx) => {
     }
   }
   if (isReportedUserAuthorized) return ctx.reply(`ℹ️ This user (${userInfo}) is an admin or authorized special user. Moderation actions skipped.`);
+
+  let markupText = '';
+  if (reply_markup && reply_markup.inline_keyboard && Array.isArray(reply_markup.inline_keyboard)) {
+    const buttons = [];
+    reply_markup.inline_keyboard.forEach(row => {
+      if (Array.isArray(row)) {
+        row.forEach(button => {
+          if (button && button.text) {
+            buttons.push(button.text);
+          }
+        });
+      }
+    });
+    if (buttons.length > 0) {
+      markupText = ` The message includes inline keyboard buttons with the following texts: "${buttons.join('", "')}".`;
+    }
+  }
+
   const loadingMsg = await ctx.reply('🔍 Analyzing content...');
   let { violates, reason } = { violates: false, reason: '' };
   try {
@@ -233,21 +251,25 @@ bot.command('report', async (ctx) => {
     }
     const fullPrompt = buildFullPrompt(simpleRules);
     const systemMsg = { role: 'system', content: fullPrompt };
+
     let userMsg;
+    let analysisText = `Analyze this message for rule violations: "${messageText}"${markupText}`;
     if (photo) {
       const file = await bot.telegram.getFile(photo[photo.length - 1].file_id);
       const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
       const { data } = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      const imageAnalysisText = messageText ? `${analysisText} (The text is the image caption.)` : `Analyze this image for rule violations.${markupText}`;
       userMsg = {
         role: 'user',
         content: [
-          { type: 'text', text: 'Analyze this image for rule violations.' },
+          { type: 'text', text: imageAnalysisText },
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${Buffer.from(data).toString('base64')}` } }
         ]
       };
     } else {
-      userMsg = { role: 'user', content: `Analyze this message for rule violations: "${messageText}"` };
+      userMsg = { role: 'user', content: analysisText };
     }
+
     ({ violates, reason } = await callHuggingFace([systemMsg, userMsg]));
   } catch (error) {
     await bot.telegram.editMessageText(chatId, loadingMsg.message_id, undefined, '❌ Analysis failed. Check rules or try again.');
