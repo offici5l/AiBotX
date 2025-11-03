@@ -120,6 +120,10 @@ Delete current rules.
 • /report  
 ↪️ Reply to any violating message or image with /report.
 
+• /mute <user_id>  
+Mute a user permanently (admins only).  
+Example: /mute 123456789
+
 • /unmute <user_id>  
 Unmute a muted user (admins only).  
 Example: /unmute 123456789
@@ -163,6 +167,41 @@ bot.command('rules', async (ctx) => {
     return;
   }
   await ctx.reply('Invalid subcommand. Use: /rules (show), /rules set <rules>, or /rules reset.');
+});
+
+bot.command('mute', async (ctx) => {
+  if (ctx.chat.type !== 'supergroup') return ctx.reply('This command is for groups only.');
+  const chatId = ctx.chat.id;
+  const args = ctx.message.text.replace('/mute', '').trim().split(' ');
+  const userIdStr = args[0]?.trim();
+  if (!userIdStr || isNaN(parseInt(userIdStr))) return ctx.reply('Usage: /mute <user_id>\nExample: /mute 123456789\n(Only admins can use this. Permanent mute.)');
+  const userId = parseInt(userIdStr);
+  const authorized = await isAuthorizedUser(ctx, chatId);
+  if (!authorized) return ctx.reply('Only admins or authorized special users can mute users.');
+  if (userId === ctx.from.id) return ctx.reply('You cannot mute yourself.');
+  try {
+    const untilDate = 0; // Permanent mute
+    await ctx.telegram.restrictChatMember(chatId, userId, {
+      until_date: untilDate,
+      permissions: {
+        can_send_messages: false,
+        can_send_media_messages: false,
+        can_send_polls: false,
+        can_send_other_messages: false,
+        can_add_web_page_previews: false,
+        can_manage_topics: false
+      }
+    });
+    let userDisplay = `User ID: ${userId}`;
+    try {
+      const member = await ctx.telegram.getChatMember(chatId, userId);
+      if (member.user.username) userDisplay = `@${member.user.username} (ID: ${userId})`;
+      else if (member.user.first_name) userDisplay = `${member.user.first_name} (ID: ${userId})`;
+    } catch (error) {}
+    await ctx.reply(`✅ ${userDisplay} muted permanently.\n\n(Admins can use /unmute ${userId} to unmute.)`);
+  } catch (error) {
+    await ctx.reply(`❌ Failed to mute user ${userId}. Check bot permissions or if the user exists.`);
+  }
 });
 
 bot.command('unmute', async (ctx) => {
