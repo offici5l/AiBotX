@@ -120,10 +120,6 @@ Delete current rules.
 • /report  
 ↪️ Reply to any violating message or image with /report.
 
-• /mute  
-Mute a user permanently (admins only).  
-↪️ Reply to a message to mute its sender, or use /mute <user_id>.
-
 • /unmute <user_id>  
 Unmute a muted user (admins only).  
 Example: /unmute 123456789
@@ -167,69 +163,6 @@ bot.command('rules', async (ctx) => {
     return;
   }
   await ctx.reply('Invalid subcommand. Use: /rules (show), /rules set <rules>, or /rules reset.');
-});
-
-bot.command('mute', async (ctx) => {
-  if (ctx.chat.type !== 'supergroup') return ctx.reply('This command is for groups only.');
-  const chatId = ctx.chat.id;
-  const replied = ctx.message.reply_to_message;
-  let userId;
-  let userDisplay;
-
-  if (replied) {
-    const { from: { id: repliedUserId, first_name, username } } = replied;
-    userId = repliedUserId;
-    userDisplay = username ? `@${username}` : first_name || 'Unknown User';
-    userDisplay += ` (ID: ${userId})`;
-  } else {
-    const args = ctx.message.text.replace('/mute', '').trim().split(' ');
-    const userIdStr = args[0]?.trim();
-    if (!userIdStr || isNaN(parseInt(userIdStr))) return ctx.reply('Usage: Reply to a message with /mute, or /mute <user_id>\nExample: /mute 123456789\n(Only admins can use this. Permanent mute.)');
-    userId = parseInt(userIdStr);
-    userDisplay = `User ID: ${userId}`;
-  }
-
-  const authorized = await isAuthorizedUser(ctx, chatId);
-  if (!authorized) return ctx.reply('Only admins or authorized special users can mute users.');
-  if (userId === ctx.from.id) return ctx.reply('You cannot mute yourself.');
-  let isTargetAuthorized = SPECIAL_ANONYMOUS_IDS.includes(userId);
-  if (!isTargetAuthorized) {
-    try {
-      const member = await ctx.telegram.getChatMember(chatId, userId);
-      isTargetAuthorized = ['administrator', 'creator'].includes(member.status);
-    } catch (error) {
-      isTargetAuthorized = false;
-    }
-  }
-  if (isTargetAuthorized) return ctx.reply(`ℹ️ This user (${userDisplay}) is an admin or authorized special user. Mute skipped.`);
-
-  if (!userDisplay.includes('ID:')) {
-    try {
-      const member = await ctx.telegram.getChatMember(chatId, userId);
-      if (member.user.username) userDisplay = `@${member.user.username} (ID: ${userId})`;
-      else if (member.user.first_name) userDisplay = `${member.user.first_name} (ID: ${userId})`;
-    } catch (error) {
-      userDisplay = `User ID: ${userId}`;
-    }
-  }
-
-  try {
-    const untilDate = 0; // Permanent mute
-    await ctx.telegram.restrictChatMember(chatId, userId, {
-      until_date: untilDate,
-      permissions: {
-        can_send_messages: false,
-        can_send_media_messages: false,
-        can_send_polls: false,
-        can_send_other_messages: false,
-        can_add_web_page_previews: false,
-        can_manage_topics: false
-      }
-    });
-    await ctx.reply(`✅ ${userDisplay} muted permanently.\n\n(Admins can use /unmute ${userId} to unmute.)`);
-  } catch (error) {
-    await ctx.reply(`❌ Failed to mute ${userDisplay}. Check bot permissions or if the user exists.`);
-  }
 });
 
 bot.command('unmute', async (ctx) => {
